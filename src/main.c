@@ -1,5 +1,44 @@
 #include "http.h"
 
+static const struct table_entry {
+	const char *extension;
+	const char *content_type;
+} content_type_table[] = {
+	{ "txt", "text/plain" },
+	{ "c", "text/plain" },
+	{ "h", "text/plain" },
+	{ "html", "text/html" },
+	{ "htm", "text/htm" },
+	{ "css", "text/css" },
+	{ "gif", "image/gif" },
+	{ "jpg", "image/jpeg" },
+	{ "jpeg", "image/jpeg" },
+	{ "png", "image/png" },
+	{ "pdf", "application/pdf" },
+	{ "ps", "application/postscript" },
+	{ NULL, NULL },
+};
+/* Try to guess a good content-type for 'path' */
+static const char *
+guess_content_type(const char *path)
+{
+	const char *last_period, *extension;
+	const struct table_entry *ent;
+	//搜索最后一次出现“．”的位置，返回之后的字符串/c/ds/c/sd.jpg返回""jpg"
+	last_period = strrchr(path, '.');
+	if (!last_period || strchr(last_period, '/'))
+		goto not_found; /* no exension */
+	extension = last_period + 1;
+	for (ent = &content_type_table[0]; ent->extension; ++ent) {
+		if (!evutil_ascii_strcasecmp(ent->extension, extension))
+			return ent->content_type;
+	}
+
+not_found:
+	return "application/misc";
+}
+
+
 // 获取一行内容,以\n\0作为结束符,返回该行的字节数
 // TODO: 该函数的正确性还需要检查
 int get_buffer_line(struct evbuffer* buffer, char* cbuf) {
@@ -135,8 +174,90 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 
 }
 
+/*根据路径和获取的req结构处理get请求
+* req有用变量：*input_headers， *output_headers，remote_port
+* 若浏览器访问0.0.0.0:8081/kk
+* path:从uri直接提取出来的path，为“/kk”;decode_path:sjbdx
+* whole_path:服务器端文件或者文件夹路径
+*/
 int handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
+    struct stat file_state;
+
+    int fd;
+    //根据路径获取文件状态到file_state结构体
+    stat(whole_path,&file_state);
+    
+    struct evbuffer* send_buffer = evbuffer_new();
+
+    DIR *loc_dir = opendir(whole_path);
+
+    //dirent refer:https://blog.csdn.net/hello188988/article/details/47711217
+    struct dirent* temp;
+
+    if(S_ISDIR(file_state.st_mode)){//if it is a directory
+        //依次加入响应正文，消息报头和状态行
+
+        //响应正文
+        evbuffer_add_printf(send_buffer,
+                            "<!DOCTYPE html>\n"
+                            "<html>\n"
+                            "<head>\n"
+                                "<meta charset=\"utf-8\">\n"
+                                "<meta name=\"author\" content=\"Yang Xiaomao\">\n"
+                                "<title>I am your father, I will give you a sweet response</title>\n"
+                                "<base href=\"sep.ucas.ac.cn\">\n"
+                            "</head>\n"
+                            "<body>\n"
+                                "<h>file list</h>\n"
+                                    "<ul>\n");
+        while ((temp = readdir(loc_dir))) {
+			evbuffer_add_printf(send_buffer,
+			    "<li><a href=\"%s\">%s</a></li>\n",
+			    temp->d_name, temp->d_name);
+		}
+        evbuffer_add_printf(send_buffer,
+			    "</ul>\n"
+                "</body>\n"
+                "</html>\n");
+
+        //消息报头
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+		    "Content-Type", "text/html");
+
+    }else{//if it is a file
+        //analyse the type of file(jpg gif or etc.)
+        const char *file_type = guess_content_type(decoded_path);
+        puts("whole path is");
+        puts(whole_path);
+
+        if((fd = open(whole_path,O_RDONLY)) < 0){
+            evhttp_send_error(req, 404, "Document was not found");
+        }
+        //printf("fd is %d\n",fd);
+
+        struct stat del;
+
+        fstat(fd,&del);
+
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+		    "Content-Type", file_type);
+
+        printf("size is %ld\n",del.st_size);
+        evbuffer_add_file(send_buffer,fd,0,del.st_size);
+    }
+    evhttp_send_reply(req, 200, "OK", send_buffer);
+//     goto done;
+// err:
+// 	evhttp_send_error(req, 404, "Document was not found");
+// done:
+// 	if (decoded_path)
+// 		free(decoded_path);
+// 	if (whole_path)
+// 		free(whole_path);
+// 	if (send_buffer)
+// 		evbuffer_free(send_buffer);
+    return 0;
 }
 
 
@@ -147,7 +268,7 @@ void request_cb(struct evhttp_request* req, void*arg)
     struct options *o = arg;
     const char *cmdtype;
     const char *uri;
-    const char *path;
+    const char *path; 
     struct evhttp_uri *decoded = NULL;
     char *decoded_path;
     size_t len;
@@ -190,6 +311,7 @@ void request_cb(struct evhttp_request* req, void*arg)
 
     /* Let's see what path the user asked for. */
     path = evhttp_uri_get_path(decoded);
+    printf("path is %s\n",path);
     if (!path) path = "/";
 
     /* We need to decode it, to see what path the user really wanted. */
