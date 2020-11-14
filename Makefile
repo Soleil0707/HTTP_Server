@@ -4,7 +4,7 @@ LIBS = -levent -lssl -lcrypto -levent_openssl
 LDFLAGS=-L/usr/local/lib
 INCS=-I/usr/local/include
 
-SRCDIR = ./
+SRCDIR = src
 SRCS := $(shell find $(SRCDIR) -name "*.c")
 
 http: 
