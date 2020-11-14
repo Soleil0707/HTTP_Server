@@ -17,7 +17,7 @@ void request_cb(struct evhttp_request* req, void*arg)
     struct options *o = arg;
     const char *cmdtype;
     const char *uri;
-    const char *path;
+    const char *path; 
     struct evhttp_uri *decoded = NULL;
     char *decoded_path;
     size_t len;
