@@ -66,7 +66,7 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
 
     if(S_ISDIR(file_state.st_mode)){//if it is a directory
         //依次加入响应正文，消息报头和状态行
-        printf("================\nclient is getting the directory\%s",whole_path);
+        printf("================\nclient is getting the directory %s\n",whole_path);
         DIR *loc_dir;
         if(!(loc_dir = opendir(whole_path))){
             printf("error\n============================\n\n");
