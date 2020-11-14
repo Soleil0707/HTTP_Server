@@ -49,7 +49,7 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 * path:从uri直接提取出来的path，为“/kk”;decode_path:sjbdx
 * whole_path:服务器端文件或者文件夹路径
 */
-int handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
+void handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
     struct stat file_state;
 
@@ -66,7 +66,12 @@ int handle_get_request(struct evhttp_request* req, const char* path, char* whole
 
     if(S_ISDIR(file_state.st_mode)){//if it is a directory
         //依次加入响应正文，消息报头和状态行
-
+        printf("================\nclient is getting the directory\%s",whole_path);
+        DIR *loc_dir;
+        if(!(loc_dir = opendir(whole_path))){
+            printf("error\n============================\n\n");
+            goto err;
+        }
         //响应正文
         evbuffer_add_printf(send_buffer,
                             "<!DOCTYPE html>\n"
@@ -82,8 +87,8 @@ int handle_get_request(struct evhttp_request* req, const char* path, char* whole
                                     "<ul>\n");
         while ((temp = readdir(loc_dir))) {
 			evbuffer_add_printf(send_buffer,
-			    "<li><a href=\"%s\">%s</a></li>\n",
-			    temp->d_name, temp->d_name);
+			    "<li>%s</li>\n",
+			    temp->d_name);
 		}
         evbuffer_add_printf(send_buffer,
 			    "</ul>\n"
@@ -96,14 +101,13 @@ int handle_get_request(struct evhttp_request* req, const char* path, char* whole
 
     }else{//if it is a file
         //analyse the type of file(jpg gif or etc.)
+        printf("============================\nclient is getting the file %s\n",whole_path);
         const char *file_type = guess_content_type(decoded_path);
-        puts("whole path is");
-        puts(whole_path);
 
         if((fd = open(whole_path,O_RDONLY)) < 0){
-            evhttp_send_error(req, 404, "Document was not found");
+        printf("error\n============================\n\n");
+            goto err;
         }
-        //printf("fd is %d\n",fd);
 
         struct stat del;
 
@@ -112,21 +116,12 @@ int handle_get_request(struct evhttp_request* req, const char* path, char* whole
         evhttp_add_header(evhttp_request_get_output_headers(req),
 		    "Content-Type", file_type);
 
-        printf("size is %ld\n",del.st_size);
         evbuffer_add_file(send_buffer,fd,0,del.st_size);
     }
     evhttp_send_reply(req, 200, "OK", send_buffer);
-//     goto done;
-// err:
-// 	evhttp_send_error(req, 404, "Document was not found");
-// done:
-// 	if (decoded_path)
-// 		free(decoded_path);
-// 	if (whole_path)
-// 		free(whole_path);
-// 	if (send_buffer)
-// 		evbuffer_free(send_buffer);
-    return 0;
+    printf("send finish\n============================\n\n");
+err:
+ 	evhttp_send_error(req, 404, "Document was not found");
 }
 
 
