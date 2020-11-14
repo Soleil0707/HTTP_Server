@@ -6,6 +6,7 @@ int handle_post_helper(struct evhttp_request* req, char* whole_path) {
 
 int handle_get_helper(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
+    
 }
 
 
