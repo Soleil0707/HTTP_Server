@@ -29,6 +29,8 @@
 #include <openssl/err.h>
 #include <openssl/rand.h> /* for RAND_poll() */
 
+#define CBUF_LEN 1024
+
 struct options {
 	int port;
 	int iocp;

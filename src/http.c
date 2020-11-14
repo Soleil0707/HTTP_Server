@@ -81,7 +81,7 @@ struct options parse_opts(int argc, char** argv)
     if (optind >= argc || (argc - optind) > 1) {
         print_usage(stdout, argv[0], 1);
     }
-
+	// 指定服务器文件位置
     o.docroot = argv[optind];
     return o;
 }
