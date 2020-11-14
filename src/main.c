@@ -1,10 +1,11 @@
 #include "http.h"
 
-int handle_post_helper(struct evhttp_request* req, char* whole_path) {
+int handle_post_request(struct evhttp_request* req, char* whole_path) {
     // TODO: post请求的处理,梁
+    
 }
 
-int handle_get_helper(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
+int handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
 }
 
@@ -89,11 +90,11 @@ void request_cb(struct evhttp_request* req, void*arg)
     // TODO: 判断是get还是post请求，分别进行处理
     // if (evhttp_request_get_command(req) == EVHTTP_REQ_POST) {
     // POST request
-    if (strcmp(cmdtype, "POST") == 0) {
+    if (!evutil_ascii_strcasecmp(cmdtype, "POST")) {
         handle_post_request(req, whole_path);
     // } else if (evhttp_request_get_command(req) == EVHTTP_REQ_GET) {
     // GET request
-    } else if (strcmp(cmdtype, "GET") == 0) {
+    } else if (!evutil_ascii_strcasecmp(cmdtype, "GET")) {
         handle_get_request(req, path, whole_path, decoded_path);
     } else {
         // http状态码501
