@@ -85,3 +85,37 @@ struct options parse_opts(int argc, char** argv)
     o.docroot = argv[optind];
     return o;
 }
+
+// 使用evbuffer_peek函数读取evbuffer中的内容并打印，该函数不会修改buffer中的数据
+void print_evbuffer(struct evbuffer* buf) {
+	int len = 1024;
+	struct evbuffer_iovec v[len];
+	int n = evbuffer_peek(buf, -1, NULL, v, len);
+	printf("---begin evbuffer print---\n");
+	for(int i = 0; i<n; i++) {
+		printf("evbuffer content is:\n");
+		printf("%s", (char *)v[i].iov_base);
+	}
+	printf("---end evbuffer print---\n");
+}
+
+/** 从evbuffer中读取一行
+ *	@param style 表示以什么判别一行的结束
+ *  EVBUFFER_EOL_ANY,			以任意\r和\n结尾
+ *	EVBUFFER_EOL_CRLF,			以\r\n或者\n结尾
+ *	EVBUFFER_EOL_CRLF_STRICT,	以\r\n结尾
+ *	EVBUFFER_EOL_LF,			以\n结尾
+ *	EVBUFFER_EOL_NUL
+ *  @return 返回的是读取到的字符串，注意！返回的字符串不带换行符！使用完后需要用free函数手动删除。未读取成功会返回null
+ * 
+ */
+char *read_evbuffer_line(struct evbuffer *buf, enum evbuffer_eol_style style)
+{
+	char *p = NULL;
+	p = evbuffer_readln(buf, NULL, style);
+	// 其他情况追加什么字符暂时先不考虑
+	// if((style == EVBUFFER_EOL_CRLF_STRICT) && (p != NULL)) {
+	// 	strncat(p, "\r\n", 2);
+	// }
+	return p;
+}

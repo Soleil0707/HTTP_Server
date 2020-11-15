@@ -111,14 +111,15 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
                 continue;
             }
             printf("boundary value of this post request is: %s \n", boundary_value);
-
-            // 将first_boundary赋值为--ZnGpDtePMx0KrHh_G0X99Yef9r8JZsRJSXC
-            // 将last_boundary赋值为--ZnGpDtePMx0KrHh_G0X99Yef9r8JZsRJSXC--
+            is_form_data = 1;
+            // 将first_boundary赋值为-- + boundary_value
+            // 将last_boundary赋值为-- + boundary_value + --
             strncpy(first_boundary, "--", 2);
             strncat(first_boundary, boundary_value, strlen(boundary_value));
             strncpy(last_boundary, first_boundary, strlen(first_boundary));
-            strncat(first_boundary, "\n", 1);
-            strncat(last_boundary, "--\n", 3);
+            strncat(last_boundary, "--", 2);
+            // printf("first_boundary is %s\n", first_boundary);
+            // printf("last_boundary is %s\n", last_boundary);
         } else if (!evutil_ascii_strcasecmp(header->key, "Content-Length")) {
             // 得到post请求包体中内容所占字节数
             content_len = atoi(header->value);
@@ -126,7 +127,6 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 
 	}
     printf("---finish a request header print----------------\n");
-
     // post请求类型为表单
     if(is_form_data < 0) {
         // 将post的数据返回回去
@@ -134,6 +134,7 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 
     // post请求类型为文件
     } else if(is_form_data > 0) {
+        // TODO: open函数的路径不能带目录，这里可能报错
         if(!(f = fopen(whole_path, "w"))) {
             printf("post request can not open file %s to write\n", whole_path);
             evhttp_send_error(req, HTTP_INTERNAL, "Post fails in write into file.");
@@ -141,31 +142,61 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
         }
 
         buf = evhttp_request_get_input_buffer(req);
-        while(current_len != content_len) {
-            char cbuf[CBUF_LEN];
-            current_len += get_buffer_line(buf, cbuf);
-            if (data_left > 0) {
-                data_left -= strlen(cbuf);
-                if (data_left < 0)
-                    cbuf[strlen(cbuf) - 1] = '\0';
-                fputs(cbuf, f);
-                cbuf[strlen(cbuf) - 1] = '\0';
-                // logger(DEBUG, "tofile: %s", cbuf);
-                continue;
-            }
-            if (!evutil_ascii_strcasecmp(cbuf, first_boundary)) {
-                printf("find boundary, begin write post data\n");
-            } else if (!evutil_ascii_strcasecmp(cbuf, last_boundary)) {
+        print_evbuffer(buf);
+
+        char *p = NULL;
+        int size = evbuffer_get_length(buf);
+        // 用于存储读出的post内容,最后一起写到file中
+        char *target = (char *)malloc(size);
+        memset(target, '\0', size);
+        // 用于检查是否查找到boundary
+        int detect_boundary = -1;
+        int is_writing = -1;
+        // 识别\r\n作为一行的结束符
+        while((p =read_evbuffer_line(buf, EVBUFFER_EOL_CRLF_STRICT)) != NULL) {
+            if (strstr(p, last_boundary) && (detect_boundary == 1)) {
+                detect_boundary = -1;
                 printf("find boundary, finish write post data.\n");
-                printf("write data length: %d, post data length: %d\n", current_len, content_len);
+                // printf("write data length: %d, post data length: %d\n", current_len, content_len);
             }
-            // 记录要post写入的文件类型
-            if (strstr(cbuf, "Content-Type:")) {
-                current_len += get_buffer_line(buf, cbuf);
-                data_left = content_len - current_len - strlen(last_boundary) - 3;
+
+            printf("-----detect_boundary=%d is_writing=%d read a line:\n", detect_boundary, is_writing);
+            printf("%s\n", p);
+
+            // 如果找到不应直接开始写，需要跳过Content-Disposition和Content-Type以及空行
+            if(detect_boundary > 0) {
+                if (strstr(p, "Content-Type") && (is_writing == -1) ) {
+                    is_writing = 0;
+                    continue;
+                } else if ((strlen(p) == 0) && (is_writing == 0)){
+                    printf("detect null line,begin to write\n");
+                    is_writing = 1;
+                    continue;
+                }
+                if(is_writing > 0) {
+                    strncat(target, p, strlen(p));
+                    strncat(target, "\r\n", 2);
+                    printf("write this line\n");
+                }
+            }
+
+            if (strstr(p, first_boundary) && (detect_boundary == -1) && (is_writing == -1)) {
+                printf("find boundary, begin write post data\n");
+                detect_boundary = 1;
             }
         }
+        printf("%s\n",target);
+        char *tmp = (char *)malloc(size);
+        memset(tmp, '\0', size);
+        // char *tmp;
+        memcpy(tmp, target, strlen(target)-2);
+        fputs(tmp, f);
+
+        free(p);
+        free(target);
+        free(tmp);
         fclose(f);
+
         evhttp_send_reply(req, 200, "OK", NULL);
     } else {
         evhttp_send_error(req, HTTP_INTERNAL, "Post fails: cannot recognize content-type.\n");

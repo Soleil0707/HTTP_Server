@@ -52,4 +52,7 @@ int display_listen_sock(struct evhttp_bound_socket *handle);
 
 struct options parse_opts(int argc, char** argv);
 
+void print_evbuffer(struct evbuffer* buf);
+
+char *read_evbuffer_line(struct evbuffer *buf, enum evbuffer_eol_style style);
 #endif
