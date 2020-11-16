@@ -8,6 +8,6 @@ SRCDIR = src
 SRCS := $(shell find $(SRCDIR) -name "*.c")
 
 http: 
-	gcc ${SRCS} -Wall $(LDFLAGS) $(INCS) $(LIBS) -o $@ 
+	gcc -g ${SRCS} -Wall $(LDFLAGS) $(INCS) $(LIBS) -o $@ 
 clean:
 	rm http

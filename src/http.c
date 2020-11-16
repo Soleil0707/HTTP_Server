@@ -77,12 +77,14 @@ struct options parse_opts(int argc, char** argv)
 			// fprintf(stderr, "Unknown option %c\n", opt); break;
         }
     }
-
     if (optind >= argc || (argc - optind) > 1) {
         print_usage(stdout, argv[0], 1);
     }
 	// 指定服务器文件位置
     o.docroot = argv[optind];
+
+	// o.port = 8081;
+	// o.docroot = "loc";
     return o;
 }
 
@@ -93,7 +95,6 @@ void print_evbuffer(struct evbuffer* buf) {
 	int n = evbuffer_peek(buf, -1, NULL, v, len);
 	printf("---begin evbuffer print---\n");
 	for(int i = 0; i<n; i++) {
-		printf("evbuffer content is:\n");
 		printf("%s", (char *)v[i].iov_base);
 	}
 	printf("---end evbuffer print---\n");
@@ -118,4 +119,146 @@ char *read_evbuffer_line(struct evbuffer *buf, enum evbuffer_eol_style style)
 	// 	strncat(p, "\r\n", 2);
 	// }
 	return p;
+}
+
+
+void write_post2file(struct evbuffer* buf, char* first_boundary, char* last_boundary, FILE* f) 
+{
+	char *p = NULL;
+	int size = evbuffer_get_length(buf);
+	// 用于存储读出的post内容,最后一起写到file中
+	char *target = (char *)malloc(size);
+	memset(target, '\0', size);
+	// 用于检查是否查找到boundary
+	int detect_boundary = -1;
+	int is_writing = -1;
+	// 识别\r\n作为一行的结束符
+	while((p =read_evbuffer_line(buf, EVBUFFER_EOL_CRLF_STRICT)) != NULL) {
+		if (strstr(p, last_boundary) && (detect_boundary == 1)) {
+			detect_boundary = -1;
+			printf("find boundary, finish write post data.\n");
+			// printf("write data length: %d, post data length: %d\n", current_len, content_len);
+		}
+
+		printf("-----detect_boundary=%d is_writing=%d read a line:\n", detect_boundary, is_writing);
+		printf("%s\n", p);
+
+		// 如果找到不应直接开始写，需要跳过Content-Disposition和Content-Type以及空行
+		if(detect_boundary > 0) {
+			if (strstr(p, "Content-Type") && (is_writing == -1) ) {
+				is_writing = 0;
+				continue;
+			} else if ((strlen(p) == 0) && (is_writing == 0)){
+				printf("detect null line,begin to write\n");
+				is_writing = 1;
+				continue;
+			}
+			if(is_writing > 0) {
+				strncat(target, p, strlen(p));
+				strncat(target, "\r\n", 2);
+				printf("write this line\n");
+			}
+		}
+
+		if (strstr(p, first_boundary) && (detect_boundary == -1) && (is_writing == -1)) {
+			printf("find boundary, begin write post data\n");
+			detect_boundary = 1;
+		}
+	}
+	printf("%s\n",target);
+	char *tmp = (char *)malloc(size);
+	memset(tmp, '\0', size);
+	// char *tmp;
+	memcpy(tmp, target, strlen(target)-2);
+	fputs(tmp, f);
+
+	free(p);
+	free(target);
+	free(tmp);
+}
+
+
+/**
+ * 写入f的evbuffer信息不仅包含了post的信息,也包含了好多其他无用的信息,比如起始和终止boundary的值,以及content-type的信息
+ * @param f 最终要保存的文件
+ * @param f_tmp 要进行修正的临时文件描述符,已经执行过fopen函数
+ * @param first_boundary 起始的边界符
+ * @param last_boundary	终止的边界符
+ * @param f_name 临时文件的文件名
+*/
+void file_revise(FILE* f, FILE* f_tmp, char* first_boundary, char* last_boundary, char* f_name) 
+{
+	int has_begin_bound = 0;
+	int has_content_disposition = 0;
+	int has_content_type = 0;
+	int has_blank_line = 0;
+	int can_write = 0;
+
+	int size = get_file_size(f_name)+1;
+	char * c = (char *)malloc(size);
+	memset(c, '\0', size);
+	char * last_c = (char *)malloc(size);
+	memset(last_c, '\0', size);
+	rewind(f_tmp);
+
+	printf("begin revise\n");
+	while(fgets(c, size, f_tmp)) {
+		// printf("fd location:%d\n", ftell(f_tmp));
+		printf("%s\n", c);
+
+		if(strstr(c, last_boundary) && (has_begin_bound == 1)) {
+			memset(c, '\0', size);
+			// 去掉最后一个CRLF
+			memcpy(c, last_c, strlen(last_c)-2);
+			fputs(c, f);
+			fflush(f);
+			printf("this is last_boundary\n");
+			break;
+		} else if(strstr(c, first_boundary)) {
+			has_begin_bound = 1;
+			printf("this is first_boundary\n");
+			continue;
+		} else if(strstr(c, "Content-Disposition") && (has_content_disposition == 0) && (has_begin_bound == 1)) {
+			has_content_disposition = 1;
+			printf("this is Content-Disposition\n");
+			continue;
+		} else if(strstr(c, "Content-Type") && (has_content_type == 0) && (has_begin_bound == 1)) {
+			has_content_type = 1;
+			printf("this is Content-Type\n");
+			continue;
+		} else if((strlen(c) == 2) && (has_blank_line == 0) && (has_begin_bound == 1)){
+			has_blank_line = 1;
+			printf("this is blank line\n");
+			continue;
+		} else if(has_begin_bound && has_content_type && has_blank_line){
+			if(can_write == 1) {
+				fputs(last_c, f);
+				fflush(f);
+			}
+			if(can_write == 0) {
+				can_write = 1;
+			}
+			memcpy(last_c, c, size);
+			// strncat(last_c, c, strlen(c));
+			printf("c length=%d\n",strlen(c));
+			printf("this writing success\n");
+		}
+	}
+	printf("write success!\n");
+
+	free(c);
+	c = NULL;
+	free(last_c);
+	last_c = NULL;
+}
+
+/**
+ * 获取指定路径文件的大小
+*/
+int get_file_size(char* filename) 
+{
+    struct stat statbuf;
+    stat(filename,&statbuf);
+    int size=statbuf.st_size;
+    return size;
 }

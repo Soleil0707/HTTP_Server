@@ -55,4 +55,10 @@ struct options parse_opts(int argc, char** argv);
 void print_evbuffer(struct evbuffer* buf);
 
 char *read_evbuffer_line(struct evbuffer *buf, enum evbuffer_eol_style style);
+
+void write_post2file(struct evbuffer* buf, char* first_boundary, char* last_boundary, FILE* f);
+
+void file_revise(FILE* f, FILE* f_tmp, char* first_boundary, char* last_boundary, char* f_name);
+
+int get_file_size(char* filename);
 #endif
