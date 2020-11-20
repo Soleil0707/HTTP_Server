@@ -40,7 +40,7 @@ not_found:
 
 
 
-int handle_post_request(struct evhttp_request* req, char* whole_path) {
+void handle_post_request(struct evhttp_request* req, char* whole_path) {
     // TODO: post请求的处理,梁
 }
 /*根据路径和获取的req结构处理get请求
@@ -49,46 +49,45 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 * path:从uri直接提取出来的path，为“/kk”;decode_path:sjbdx
 * whole_path:服务器端文件或者文件夹路径
 */
-#define MAX_CHUNK_MAX 1024
+#define MAX_CHUNK_SIZE 1024
 void send_data_by_chunk(struct evhttp_request* req, char* data, int len) {
     struct evbuffer* send_buffer = evbuffer_new();
     evbuffer_add(send_buffer, data, len);
     evhttp_send_reply_chunk(req, send_buffer);
     evbuffer_free(send_buffer);
 }
+
 void handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
     struct stat file_state;
 
     int fd;
     //根据路径获取文件状态到file_state结构体
-    stat(whole_path,&file_state);
-    
-    struct evbuffer* send_buffer = evbuffer_new();
-
-    DIR *loc_dir = opendir(whole_path);
-
-    //dirent refer:https://blog.csdn.net/hello188988/article/details/47711217
-    struct dirent* temp_dir;
+    stat(whole_path,&file_state);    
 
     if(S_ISDIR(file_state.st_mode)){//if it is a directory
         //依次加入响应正文，消息报头和状态行
-        printf("================\nclient is getting the directory %s\n",whole_path);
+        printf("\n================\nclient is getting the directory %s\n",whole_path);
         DIR *loc_dir;
+        char temp_buffer[MAX_CHUNK_SIZE]; 
+        struct dirent* temp_dir;
+
         if(!(loc_dir = opendir(whole_path))){
             printf("error\n============================\n\n");
             goto err;
         }
+        
         evhttp_add_header(evhttp_request_get_output_headers(req),
 		    "Content-Type", "text/html");
-        const char temp_buffer[MAX_CHUNK_MAX];
+        evhttp_send_reply_start(req, HTTP_OK,
+                            "Start to send directory by chunk.");
+
         sprintf(temp_buffer,"<!DOCTYPE html>\n"
                             "<html>\n"
                             "<head>\n"
                                 "<meta charset=\"utf-8\">\n"
                                 "<meta name=\"author\" content=\"Yang Xiaomao\">\n"
                                 "<title>I am your father, I will give you a sweet response</title>\n"
-                                "<base href=\"sep.ucas.ac.cn\">\n"
                             "</head>\n"
                             "<body>\n"
                                 "<h>file list</h>\n"
@@ -99,7 +98,7 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
             const char* name = temp_dir->d_name;
             if (evutil_ascii_strcasecmp(name, ".") &&
                 evutil_ascii_strcasecmp(name, "..")) {
-                sprintf(temp_buffer, "    <li>%s</li>\n", name, name);
+                sprintf(temp_buffer, "    <li>%s</li>\n", name);
                 send_data_by_chunk(req, temp_buffer, strlen(temp_buffer));
             }
 		}
@@ -109,31 +108,57 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
                 "</html>\n");
         send_data_by_chunk(req, temp_buffer, strlen(temp_buffer));
         closedir(loc_dir);
-        
-
     }else{//if it is a file
         //analyse the type of file(jpg gif or etc.)
         printf("============================\nclient is getting the file %s\n",whole_path);
         const char *file_type = guess_content_type(decoded_path);
 
         if((fd = open(whole_path,O_RDONLY)) < 0){
-        printf("error\n============================\n\n");
+            printf("error\n============================\n\n");
             goto err;
         }
 
         struct stat del;
-
+        
         fstat(fd,&del);
+        //file size to send
+        size_t file_size = del.st_size;
+        //file_send_offset
+        off_t offset = 0;
+        //the rest of the file to send  
+        size_t rest_file_len = file_size;
+        //chunk_size to send 
+        size_t send_size;   
 
         evhttp_add_header(evhttp_request_get_output_headers(req),
 		    "Content-Type", file_type);
+        evhttp_send_reply_start(req, HTTP_OK, "Start to send file by chunk.");
 
-        evbuffer_add_file(send_buffer,fd,0,del.st_size);
+        while(offset < file_size){
+            rest_file_len = file_size - offset;
+            send_size = (rest_file_len > 512) ? 512 : rest_file_len;
+            
+            struct evbuffer* file_buffer = evbuffer_new();
+            struct evbuffer_file_segment* ev_seg = 
+                evbuffer_file_segment_new(fd,offset,send_size,0);
+
+            evbuffer_add_file_segment(file_buffer,
+                                      ev_seg,0,send_size);
+            evhttp_send_reply_chunk(req,file_buffer);
+    
+            evbuffer_file_segment_free(ev_seg);
+            evbuffer_free(file_buffer);
+
+            offset += send_size;
+        }
+        close(fd);
     }
-    evhttp_send_reply(req, 200, "OK", send_buffer);
     printf("send finish\n============================\n\n");
+    evhttp_send_reply_end(req);
+    return;
 err:
  	evhttp_send_error(req, 404, "Document was not found");
+    return;
 }
 
 
