@@ -1,7 +1,6 @@
 #include "http.h"
 
 void print_usage(FILE* out, const char* prog, int exit_code) {
-	// 从官方示例里抄过来，运于打印该http服务器的使用方式
     // fprintf(out, "usage: %s [-p port_num] <docroot>\n", prog);
 	fprintf(out,
 		"Syntax: %s [ OPTS ] <docroot>\n"
@@ -11,7 +10,6 @@ void print_usage(FILE* out, const char* prog, int exit_code) {
 
 void do_term(int sig, short events, void *arg)
 {
-    // TODO: 从官方示例里抄过来，啥意思暂时没读懂
 	struct event_base *base = arg;
 	event_base_loopbreak(base);
 	// fprintf(stderr, "Got %i, Terminating\n", sig);
@@ -20,7 +18,6 @@ void do_term(int sig, short events, void *arg)
 
 int display_listen_sock(struct evhttp_bound_socket *handle)
 {
-    // TODO: 从官方示例里抄过来，啥意思暂时没读懂
 	struct sockaddr_storage ss;
 	evutil_socket_t fd;
 	ev_socklen_t socklen = sizeof(ss);
@@ -64,7 +61,6 @@ int display_listen_sock(struct evhttp_bound_socket *handle)
 
 struct options parse_opts(int argc, char** argv) 
 {
-    // 在这里处理命令行参数
     struct options o;
 	int opt;
 
@@ -80,7 +76,6 @@ struct options parse_opts(int argc, char** argv)
     if (optind >= argc || (argc - optind) > 1) {
         print_usage(stdout, argv[0], 1);
     }
-	// 指定服务器文件位置
     o.docroot = argv[optind];
 
 	// o.port = 8081;
@@ -88,7 +83,6 @@ struct options parse_opts(int argc, char** argv)
     return o;
 }
 
-// 使用evbuffer_peek函数读取evbuffer中的内容并打印，该函数不会修改buffer中的数据
 void print_evbuffer(struct evbuffer* buf) {
 	int len = 1024;
 	struct evbuffer_iovec v[len];
@@ -99,6 +93,64 @@ void print_evbuffer(struct evbuffer* buf) {
 	}
 	printf("---end evbuffer print---\n");
 }
+
+/* Try to guess a good content-type for 'path' */
+char *
+guess_content_type(const char *path)
+{
+	const char *last_period, *extension;
+	const struct table_entry *ent;
+	last_period = strrchr(path, '.');
+	if (!last_period || strchr(last_period, '/'))
+		goto not_found; /* no exension */
+	extension = last_period + 1;
+	for (ent = &content_type_table[0]; ent->extension; ++ent) {
+		if (!evutil_ascii_strcasecmp(ent->extension, extension))
+			return ent->content_type;
+	}
+
+not_found:
+	return "application/misc";
+}
+
+void send_data_by_chunk(struct evhttp_request* req, char* data, int len) {
+    struct evbuffer* send_buffer = evbuffer_new();
+    evbuffer_add(send_buffer, data, len);
+    evhttp_send_reply_chunk(req, send_buffer);
+    evbuffer_free(send_buffer);
+}
+
+
+int get_buffer_line(struct evbuffer* buffer, char* cbuf) {
+    int i = 0;
+    char c = '\0';
+    char last_c = '\0';
+    int flag = 0;
+
+    while (evbuffer_get_length(buffer)) {
+        if(c == '\n') {
+            break;
+        }
+        if(i >= CBUF_LEN - 2) {
+            break;
+        }
+
+        if (evbuffer_remove(buffer, &c, 1) > 0) {
+            if ((last_c == '\r') && (c == '\n')) {
+                cbuf[i-1] = c;
+                flag = 1;
+                break;
+            }
+            last_c = c;
+            cbuf[i++] = c;
+        } else {
+            c = '\n';
+        }
+    }
+    cbuf[i] = '\0';
+    return i+flag;
+}
+
 
 /** 从evbuffer中读取一行
  *	@param style 表示以什么判别一行的结束
@@ -114,7 +166,6 @@ char *read_evbuffer_line(struct evbuffer *buf, enum evbuffer_eol_style style)
 {
 	char *p = NULL;
 	p = evbuffer_readln(buf, NULL, style);
-	// 其他情况追加什么字符暂时先不考虑
 	// if((style == EVBUFFER_EOL_CRLF_STRICT) && (p != NULL)) {
 	// 	strncat(p, "\r\n", 2);
 	// }
@@ -126,13 +177,11 @@ void write_post2file(struct evbuffer* buf, char* first_boundary, char* last_boun
 {
 	char *p = NULL;
 	int size = evbuffer_get_length(buf);
-	// 用于存储读出的post内容,最后一起写到file中
 	char *target = (char *)malloc(size);
 	memset(target, '\0', size);
-	// 用于检查是否查找到boundary
 	int detect_boundary = -1;
 	int is_writing = -1;
-	// 识别\r\n作为一行的结束符
+
 	while((p =read_evbuffer_line(buf, EVBUFFER_EOL_CRLF_STRICT)) != NULL) {
 		if (strstr(p, last_boundary) && (detect_boundary == 1)) {
 			detect_boundary = -1;
@@ -143,7 +192,6 @@ void write_post2file(struct evbuffer* buf, char* first_boundary, char* last_boun
 		printf("-----detect_boundary=%d is_writing=%d read a line:\n", detect_boundary, is_writing);
 		printf("%s\n", p);
 
-		// 如果找到不应直接开始写，需要跳过Content-Disposition和Content-Type以及空行
 		if(detect_boundary > 0) {
 			if (strstr(p, "Content-Type") && (is_writing == -1) ) {
 				is_writing = 0;
@@ -208,7 +256,6 @@ void file_revise(FILE* f, FILE* f_tmp, char* first_boundary, char* last_boundary
 
 		if(strstr(c, last_boundary) && (has_begin_bound == 1)) {
 			memset(c, '\0', size);
-			// 去掉最后一个CRLF
 			memcpy(c, last_c, strlen(last_c)-2);
 			fputs(c, f);
 			fflush(f);
@@ -240,7 +287,7 @@ void file_revise(FILE* f, FILE* f_tmp, char* first_boundary, char* last_boundary
 			}
 			memcpy(last_c, c, size);
 			// strncat(last_c, c, strlen(c));
-			printf("c length=%d\n",strlen(c));
+			// printf("c length=%d\n",strlen(c));
 			printf("this writing success\n");
 		}
 	}
@@ -265,14 +312,11 @@ int get_file_size(char* filename)
 
 
 SSL_CTX* create_ssl(){
-	// printf("TODO: create ssl need to writing\n");
 	SSL_library_init ();
 	SSL_load_error_strings ();
 	OpenSSL_add_all_algorithms ();
-	// TODO：测试下这个能不能不加
-	ERR_load_crypto_strings();
+	// ERR_load_crypto_strings();
 
-	// TODO：测试下这个能不能不加
 	if (!RAND_poll())
 		return NULL;
 	
@@ -281,7 +325,6 @@ SSL_CTX* create_ssl(){
 		printf("SSL_CTX_new fail!\n");
 		return NULL;
 	}
-	// TODO: 这个函数的参数，学长的和github的不同
 	SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
 
 	if (1 != SSL_CTX_use_certificate_chain_file (ctx, "cert_chain")) {
@@ -314,7 +357,6 @@ struct bufferevent* sslcb(struct event_base* base, void* arg) {
                                         -1,
                                         SSL_new (ctx),
                                         BUFFEREVENT_SSL_ACCEPTING,
-										// TODO: 学长的代码有两个参数 BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS
                                         // BEV_OPT_CLOSE_ON_FREE);
 										BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
   return r;
