@@ -7,7 +7,7 @@ INCS=-I/usr/local/include
 SRCDIR = src
 SRCS := $(shell find $(SRCDIR) -name "*.c")
 
-http: 
+http: ./src/main.c ./src/http.c
 	gcc -g ${SRCS} -Wall $(LDFLAGS) $(INCS) $(LIBS) -o $@ 
 clean:
-	rm http
+	rm -f http

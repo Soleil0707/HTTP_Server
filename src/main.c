@@ -421,7 +421,7 @@ main(int argc, char* argv[])
         goto err;
     }
 
-    // evhttp_set_bevcb(http, sslcb, ctx);
+    evhttp_set_bevcb(http, sslcb, ctx);
 
     evhttp_set_gencb(http, request_cb, &opt);
 
