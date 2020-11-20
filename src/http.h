@@ -31,6 +31,8 @@
 
 #define CBUF_LEN 1024
 #define MAX_CHUNK_SIZE 512
+extern unsigned int request_count;
+
 struct options {
 	int port;
 	int iocp;
@@ -62,7 +64,7 @@ static const struct table_entry {
 	{ NULL, NULL },
 };
 
-char * guess_content_type(const char *path);
+const char * guess_content_type(const char *path);
 
 int get_buffer_line(struct evbuffer* buffer, char* cbuf);
 
@@ -86,6 +88,14 @@ void file_revise(FILE* f, FILE* f_tmp, char* first_boundary, char* last_boundary
 
 int get_file_size(char* filename);
 
+int handle_post_request(struct evhttp_request* req, char* whole_path);
+
+void handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path);
+
+void request_cb(struct evhttp_request* req, void*arg);
+
 struct bufferevent* sslcb(struct event_base* base, void* arg);
+
 SSL_CTX* create_ssl();
+
 #endif
