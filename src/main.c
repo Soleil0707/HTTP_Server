@@ -82,8 +82,8 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
     char first_boundary[256] = {0};
     char last_boundary[256] = {0};
     int content_len = 0;
-    int current_len = 0;
-    int data_left = -1;
+    // int current_len = 0;
+    // int data_left = -1;
     struct evbuffer *buf = NULL;
 
     // 获取一个请求的报头，报头里面的内容组成了一个队列
@@ -121,12 +121,14 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
             is_file_data = 1;
             // 将first_boundary赋值为-- + boundary_value
             // 将last_boundary赋值为-- + boundary_value + --
-            strncat(first_boundary, "--", strlen("--"));
-            strncat(first_boundary, boundary_value, strlen(boundary_value));
-            strncat(last_boundary, first_boundary, strlen(first_boundary));
+            strcat(first_boundary, "--");
+            strncat(first_boundary, boundary_value, strlen(boundary_value)+1);
+            strncat(last_boundary, first_boundary, strlen(first_boundary)+1);
             
-            strncat(first_boundary, "\r\n", strlen("\r\n"));
-            strncat(last_boundary, "--\r\n", strlen("--\r\n"));
+            // while((*s++ = *t++) != '\0')
+
+            strcat(first_boundary, "\r\n");
+            strcat(last_boundary, "--\r\n");
 
             printf("first_boundary is:%s, sizeof=%d, strlen=%d\n", first_boundary, sizeof(first_boundary), strlen(first_boundary));
         } else if (!evutil_ascii_strcasecmp(header->key, "Content-Length")) {
@@ -419,7 +421,7 @@ main(int argc, char* argv[])
         goto err;
     }
 
-    evhttp_set_bevcb(http, sslcb, ctx);
+    // evhttp_set_bevcb(http, sslcb, ctx);
 
     evhttp_set_gencb(http, request_cb, &opt);
 

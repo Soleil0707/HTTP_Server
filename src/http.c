@@ -155,7 +155,7 @@ void write_post2file(struct evbuffer* buf, char* first_boundary, char* last_boun
 			}
 			if(is_writing > 0) {
 				strncat(target, p, strlen(p));
-				strncat(target, "\r\n", 2);
+				strcat(target, "\r\n");
 				printf("write this line\n");
 			}
 		}
@@ -315,6 +315,7 @@ struct bufferevent* sslcb(struct event_base* base, void* arg) {
                                         SSL_new (ctx),
                                         BUFFEREVENT_SSL_ACCEPTING,
 										// TODO: 学长的代码有两个参数 BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS
-                                        BEV_OPT_CLOSE_ON_FREE);
+                                        // BEV_OPT_CLOSE_ON_FREE);
+										BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
   return r;
 }
