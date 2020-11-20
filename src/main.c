@@ -74,7 +74,7 @@ int get_buffer_line(struct evbuffer* buffer, char* cbuf) {
     return i+flag;
 }
 
-int handle_post_request(struct evhttp_request* req, char* whole_path) {
+void handle_post_request(struct evhttp_request* req, char* whole_path) {
     // TODO: post请求的处理,梁
     struct evkeyvalq* headers = NULL;
 	struct evkeyval *header = NULL;
@@ -198,84 +198,116 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 * path:从uri直接提取出来的path，为“/kk”;decode_path:sjbdx
 * whole_path:服务器端文件或者文件夹路径
 */
-int handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
+#define MAX_CHUNK_SIZE 1024
+void send_data_by_chunk(struct evhttp_request* req, char* data, int len) {
+    struct evbuffer* send_buffer = evbuffer_new();
+    evbuffer_add(send_buffer, data, len);
+    evhttp_send_reply_chunk(req, send_buffer);
+    evbuffer_free(send_buffer);
+}
+
+void handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
     struct stat file_state;
 
     int fd;
     //根据路径获取文件状态到file_state结构体
-    stat(whole_path,&file_state);
-    
-    struct evbuffer* send_buffer = evbuffer_new();
-
-    DIR *loc_dir = opendir(whole_path);
-
-    //dirent refer:https://blog.csdn.net/hello188988/article/details/47711217
-    struct dirent* temp;
+    stat(whole_path,&file_state);    
 
     if(S_ISDIR(file_state.st_mode)){//if it is a directory
         //依次加入响应正文，消息报头和状态行
+        printf("\n================\nclient is getting the directory %s\n",whole_path);
+        DIR *loc_dir;
+        char temp_buffer[MAX_CHUNK_SIZE]; 
+        struct dirent* temp_dir;
 
-        //响应正文
-        evbuffer_add_printf(send_buffer,
-                            "<!DOCTYPE html>\n"
+        if(!(loc_dir = opendir(whole_path))){
+            printf("error\n============================\n\n");
+            goto err;
+        }
+        
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+		    "Content-Type", "text/html");
+        evhttp_send_reply_start(req, HTTP_OK,
+                            "Start to send directory by chunk.");
+
+        sprintf(temp_buffer,"<!DOCTYPE html>\n"
                             "<html>\n"
                             "<head>\n"
                                 "<meta charset=\"utf-8\">\n"
                                 "<meta name=\"author\" content=\"Yang Xiaomao\">\n"
                                 "<title>I am your father, I will give you a sweet response</title>\n"
-                                "<base href=\"sep.ucas.ac.cn\">\n"
                             "</head>\n"
                             "<body>\n"
                                 "<h>file list</h>\n"
                                     "<ul>\n");
-        while ((temp = readdir(loc_dir))) {
-			evbuffer_add_printf(send_buffer,
-			    "<li><a href=\"%s\">%s</a></li>\n",
-			    temp->d_name, temp->d_name);
+        send_data_by_chunk(req,temp_buffer,strlen(temp_buffer));
+
+        while ((temp_dir = readdir(loc_dir))) {
+            const char* name = temp_dir->d_name;
+            if (evutil_ascii_strcasecmp(name, ".") &&
+                evutil_ascii_strcasecmp(name, "..")) {
+                sprintf(temp_buffer, "    <li>%s</li>\n", name);
+                send_data_by_chunk(req, temp_buffer, strlen(temp_buffer));
+            }
 		}
-        evbuffer_add_printf(send_buffer,
+        sprintf(temp_buffer,
 			    "</ul>\n"
                 "</body>\n"
                 "</html>\n");
-
-        //消息报头
-        evhttp_add_header(evhttp_request_get_output_headers(req),
-		    "Content-Type", "text/html");
-
+        send_data_by_chunk(req, temp_buffer, strlen(temp_buffer));
+        closedir(loc_dir);
     }else{//if it is a file
         //analyse the type of file(jpg gif or etc.)
+        printf("============================\nclient is getting the file %s\n",whole_path);
         const char *file_type = guess_content_type(decoded_path);
-        puts("whole path is");
-        puts(whole_path);
 
         if((fd = open(whole_path,O_RDONLY)) < 0){
-            evhttp_send_error(req, 404, "Document was not found");
+            printf("error\n============================\n\n");
+            goto err;
         }
-        //printf("fd is %d\n",fd);
 
         struct stat del;
-
+        
         fstat(fd,&del);
+        //file size to send
+        size_t file_size = del.st_size;
+        //file_send_offset
+        off_t offset = 0;
+        //the rest of the file to send  
+        size_t rest_file_len = file_size;
+        //chunk_size to send 
+        size_t send_size;   
 
         evhttp_add_header(evhttp_request_get_output_headers(req),
 		    "Content-Type", file_type);
+        evhttp_send_reply_start(req, HTTP_OK, "Start to send file by chunk.");
 
-        printf("size is %ld\n",del.st_size);
-        evbuffer_add_file(send_buffer,fd,0,del.st_size);
+        while(offset < file_size){
+            rest_file_len = file_size - offset;
+            send_size = (rest_file_len > 512) ? 512 : rest_file_len;
+            
+            struct evbuffer* file_buffer = evbuffer_new();
+            struct evbuffer_file_segment* ev_seg = 
+                evbuffer_file_segment_new(fd,offset,send_size,0);
+
+            evbuffer_add_file_segment(file_buffer,
+                                      ev_seg,0,send_size);
+            evhttp_send_reply_chunk(req,file_buffer);
+    
+            evbuffer_file_segment_free(ev_seg);
+            evbuffer_free(file_buffer);
+
+            offset += send_size;
+        }
+        close(fd);
     }
-    evhttp_send_reply(req, 200, "OK", send_buffer);
-//     goto done;
-// err:
-// 	evhttp_send_error(req, 404, "Document was not found");
-// done:
-// 	if (decoded_path)
-// 		free(decoded_path);
-// 	if (whole_path)
-// 		free(whole_path);
-// 	if (send_buffer)
-// 		evbuffer_free(send_buffer);
-    return 0;
+    printf("send finish\n============================\n\n");
+    evhttp_send_reply_end(req);
+    return;
+err:
+ 	evhttp_send_error(req, 404, "Document was not found");
+    return;
 }
 
 
