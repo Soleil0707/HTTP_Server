@@ -61,4 +61,8 @@ void write_post2file(struct evbuffer* buf, char* first_boundary, char* last_boun
 void file_revise(FILE* f, FILE* f_tmp, char* first_boundary, char* last_boundary, char* f_name);
 
 int get_file_size(char* filename);
+
+
+struct bufferevent* sslcb(struct event_base* base, void* arg);
+SSL_CTX* create_ssl();
 #endif

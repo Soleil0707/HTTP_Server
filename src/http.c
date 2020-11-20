@@ -262,3 +262,59 @@ int get_file_size(char* filename)
     int size=statbuf.st_size;
     return size;
 }
+
+
+SSL_CTX* create_ssl(){
+	// printf("TODO: create ssl need to writing\n");
+	SSL_library_init ();
+	SSL_load_error_strings ();
+	OpenSSL_add_all_algorithms ();
+	// TODO：测试下这个能不能不加
+	ERR_load_crypto_strings();
+
+	// TODO：测试下这个能不能不加
+	if (!RAND_poll())
+		return NULL;
+	
+	SSL_CTX *ctx = SSL_CTX_new (SSLv23_server_method ());
+	if(!ctx) {
+		printf("SSL_CTX_new fail!\n");
+		return NULL;
+	}
+	// TODO: 这个函数的参数，学长的和github的不同
+	SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
+
+	if (1 != SSL_CTX_use_certificate_chain_file (ctx, "cert_chain")) {
+		printf("please verify the certificate and name it as \"cert_chain\"\n");
+		return NULL;
+	}
+	if (1 != SSL_CTX_use_PrivateKey_file (ctx, "pri_key", SSL_FILETYPE_PEM)) {
+		printf("please verify the private key and name it as \"pri_key\"\n");
+		return NULL;
+	}
+	if (1 != SSL_CTX_check_private_key (ctx)) {
+		printf("the certificate and the private key are not consist\n");
+		return NULL;
+	}
+	return ctx;
+}
+
+
+/**
+ * This callback is responsible for creating a new SSL connection
+ * and wrapping it in an OpenSSL bufferevent.  This is the way
+ * we implement an https server instead of a plain old http server.
+ * from : https://github.com/ppelleti/https-example/blob/master/https-server.c
+ */
+struct bufferevent* sslcb(struct event_base* base, void* arg) {
+	struct bufferevent* r;
+	SSL_CTX *ctx = (SSL_CTX *) arg;
+
+	r = bufferevent_openssl_socket_new (base,
+                                        -1,
+                                        SSL_new (ctx),
+                                        BUFFEREVENT_SSL_ACCEPTING,
+										// TODO: 学长的代码有两个参数 BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS
+                                        BEV_OPT_CLOSE_ON_FREE);
+  return r;
+}

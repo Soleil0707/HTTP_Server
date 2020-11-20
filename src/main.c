@@ -413,6 +413,13 @@ main(int argc, char* argv[])
     }
 
     // TODO: 此处实现https中的ssl功能
+    SSL_CTX* ctx = create_ssl();
+    if(!ctx) {
+        printf("can not create a ssl\n");
+        goto err;
+    }
+
+    evhttp_set_bevcb(http, sslcb, ctx);
 
     evhttp_set_gencb(http, request_cb, &opt);
 
@@ -446,7 +453,8 @@ err:
         event_free(term);
     if (base)
         event_base_free(base);
-    // TODO: 此处加入ssl出错的处理
+    if(ctx)
+        SSL_CTX_free(ctx);
     return ret;
 }
 
