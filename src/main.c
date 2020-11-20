@@ -74,7 +74,7 @@ int get_buffer_line(struct evbuffer* buffer, char* cbuf) {
     return i+flag;
 }
 
-void handle_post_request(struct evhttp_request* req, char* whole_path) {
+int handle_post_request(struct evhttp_request* req, char* whole_path) {
     // TODO: post请求的处理,梁
     struct evkeyvalq* headers = NULL;
 	struct evkeyval *header = NULL;
@@ -198,7 +198,7 @@ void handle_post_request(struct evhttp_request* req, char* whole_path) {
 * path:从uri直接提取出来的path，为“/kk”;decode_path:sjbdx
 * whole_path:服务器端文件或者文件夹路径
 */
-#define MAX_CHUNK_SIZE 1024
+
 void send_data_by_chunk(struct evhttp_request* req, char* data, int len) {
     struct evbuffer* send_buffer = evbuffer_new();
     evbuffer_add(send_buffer, data, len);
@@ -285,7 +285,7 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
 
         while(offset < file_size){
             rest_file_len = file_size - offset;
-            send_size = (rest_file_len > 512) ? 512 : rest_file_len;
+            send_size = (rest_file_len > MAX_CHUNK_SIZE) ? MAX_CHUNK_SIZE : rest_file_len;
             
             struct evbuffer* file_buffer = evbuffer_new();
             struct evbuffer_file_segment* ev_seg = 

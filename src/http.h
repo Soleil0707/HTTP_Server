@@ -31,6 +31,8 @@
 
 #define CBUF_LEN 1024
 
+#define MAX_CHUNK_SIZE 1024
+
 struct options {
 	int port;
 	int iocp;
