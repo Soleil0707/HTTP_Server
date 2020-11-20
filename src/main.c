@@ -49,6 +49,13 @@ int handle_post_request(struct evhttp_request* req, char* whole_path) {
 * path:从uri直接提取出来的path，为“/kk”;decode_path:sjbdx
 * whole_path:服务器端文件或者文件夹路径
 */
+#define MAX_CHUNK_MAX 1024
+void send_data_by_chunk(struct evhttp_request* req, char* data, int len) {
+    struct evbuffer* send_buffer = evbuffer_new();
+    evbuffer_add(send_buffer, data, len);
+    evhttp_send_reply_chunk(req, send_buffer);
+    evbuffer_free(send_buffer);
+}
 void handle_get_request(struct evhttp_request* req, const char* path, char* whole_path, char* decoded_path) {
     // TODO: get请求的处理,杨
     struct stat file_state;
@@ -62,7 +69,7 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
     DIR *loc_dir = opendir(whole_path);
 
     //dirent refer:https://blog.csdn.net/hello188988/article/details/47711217
-    struct dirent* temp;
+    struct dirent* temp_dir;
 
     if(S_ISDIR(file_state.st_mode)){//if it is a directory
         //依次加入响应正文，消息报头和状态行
@@ -72,9 +79,10 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
             printf("error\n============================\n\n");
             goto err;
         }
-        //响应正文
-        evbuffer_add_printf(send_buffer,
-                            "<!DOCTYPE html>\n"
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+		    "Content-Type", "text/html");
+        const char temp_buffer[MAX_CHUNK_MAX];
+        sprintf(temp_buffer,"<!DOCTYPE html>\n"
                             "<html>\n"
                             "<head>\n"
                                 "<meta charset=\"utf-8\">\n"
@@ -85,19 +93,23 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
                             "<body>\n"
                                 "<h>file list</h>\n"
                                     "<ul>\n");
-        while ((temp = readdir(loc_dir))) {
-			evbuffer_add_printf(send_buffer,
-			    "<li>%s</li>\n",
-			    temp->d_name);
+        send_data_by_chunk(req,temp_buffer,strlen(temp_buffer));
+
+        while ((temp_dir = readdir(loc_dir))) {
+            const char* name = temp_dir->d_name;
+            if (evutil_ascii_strcasecmp(name, ".") &&
+                evutil_ascii_strcasecmp(name, "..")) {
+                sprintf(temp_buffer, "    <li>%s</li>\n", name, name);
+                send_data_by_chunk(req, temp_buffer, strlen(temp_buffer));
+            }
 		}
-        evbuffer_add_printf(send_buffer,
+        sprintf(temp_buffer,
 			    "</ul>\n"
                 "</body>\n"
                 "</html>\n");
-
-        //消息报头
-        evhttp_add_header(evhttp_request_get_output_headers(req),
-		    "Content-Type", "text/html");
+        send_data_by_chunk(req, temp_buffer, strlen(temp_buffer));
+        closedir(loc_dir);
+        
 
     }else{//if it is a file
         //analyse the type of file(jpg gif or etc.)
