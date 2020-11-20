@@ -1,6 +1,6 @@
 #include "http.h"
 
-
+unsigned int request_count = 0;
 int handle_post_request(struct evhttp_request* req, char* whole_path) {
     struct evkeyvalq* headers = NULL;
 	struct evkeyval *header = NULL;
@@ -107,14 +107,14 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
     stat(whole_path,&file_state);    
 
     if(S_ISDIR(file_state.st_mode)){//if it is a directory
-        printf("\n================\nclient is getting the directory %s\n",whole_path);
+        printf("\n============================\nclient is getting the directory %s\n",whole_path);
         DIR *loc_dir;
         char temp_buffer[MAX_CHUNK_SIZE]; 
         struct dirent* temp_dir;
         memset(temp_buffer, 0, MAX_CHUNK_SIZE);
 
         if(!(loc_dir = opendir(whole_path))){
-            printf("error\n============================\n\n");
+            printf("error\n============================\n");
             goto err;
         }
         
@@ -182,11 +182,10 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
             struct evbuffer* file_buffer = evbuffer_new();
             struct evbuffer_file_segment* ev_seg = 
                 evbuffer_file_segment_new(fd,offset,send_size,0);
-
             evbuffer_add_file_segment(file_buffer,
                                       ev_seg,0,send_size);
             evhttp_send_reply_chunk(req,file_buffer);
-    
+            printf("Send chunk from %ld to %ld bytes of the files to the client, size is %lu\n",offset,offset + send_size,send_size);
             evbuffer_file_segment_free(ev_seg);
             evbuffer_free(file_buffer);
 
@@ -194,11 +193,12 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
         }
         close(fd);
     }
-    printf("send finish\n============================\n\n");
+    printf("Send finish\n============================\n\n");
     evhttp_send_reply_end(req);
     return;
 err:
- 	evhttp_send_error(req, 404, "Document was not found");
+ 	evhttp_send_error(req, 404, "Document was not found,or \
+please don't let your browser try to get my favicon.ico!");
     return;
 }
 
@@ -213,6 +213,9 @@ void request_cb(struct evhttp_request* req, void*arg)
     char *decoded_path;
     size_t len;
     char *whole_path = NULL;
+
+    request_count++;
+    printf("Total request number is %d\n",request_count);
 
     switch (evhttp_request_get_command(req)) {
         case EVHTTP_REQ_GET: 	 cmdtype = "GET";     break;
@@ -328,7 +331,7 @@ main(int argc, char* argv[])
         goto err;
     }
 
-    evhttp_set_bevcb(http, sslcb, ctx);
+    //evhttp_set_bevcb(http, sslcb, ctx);
 
     evhttp_set_gencb(http, request_cb, &opt);
 

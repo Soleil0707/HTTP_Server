@@ -15,7 +15,6 @@ void do_term(int sig, short events, void *arg)
 	// fprintf(stderr, "Got %i, Terminating\n", sig);
 	printf("XXXXX Got %i, Terminating XXXXXXXXXXX\n", sig);
 }
-
 int display_listen_sock(struct evhttp_bound_socket *handle)
 {
 	struct sockaddr_storage ss;
