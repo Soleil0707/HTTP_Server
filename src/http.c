@@ -350,7 +350,7 @@ struct bufferevent* sslcb(struct event_base* base, void* arg) {
                                         BUFFEREVENT_SSL_ACCEPTING,
                                         // BEV_OPT_CLOSE_ON_FREE);
 										BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-  return r;
+    return r;
 }
 
 unsigned int request_count = 0;
@@ -549,7 +549,7 @@ void handle_get_request(struct evhttp_request* req, const char* path, char* whol
     evhttp_send_reply_end(req);
     return;
 err:
- 	evhttp_send_error(req, 404, "Document was not found,or \
+    evhttp_send_error(req, 404, "Document was not found,or \
 please don't let your browser try to get my favicon.ico!");
     return;
 }
@@ -582,7 +582,7 @@ void request_cb(struct evhttp_request* req, void*arg) {
     }
     uri = evhttp_request_get_uri(req);
     printf("Received a %s request for %s\nHeaders:\n",
-	    cmdtype, uri);
+        cmdtype, uri);
 
     if (!evutil_ascii_strcasecmp(cmdtype, "unknown")) {
         printf("[HTTP STATUS] 405 method not allowed\n");
