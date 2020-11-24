@@ -17,5 +17,5 @@ make
 
 # 使用方法
 ```shell
-./http -p [端口号] 服务器资源目录
+./HTTP_SERVER.ELF -p [端口号] 服务器资源目录
 ```
